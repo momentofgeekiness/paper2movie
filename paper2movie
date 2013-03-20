@@ -1,0 +1,148 @@
+#!/bin/bash
+
+# paper2movie
+# Copyright (c) 2013 Raymond Vermaas
+# ----------------------------------
+#
+# This bash script loops through a git repository to creates all the intermediate 
+# versions of the paper from the Latex files. It then calculates the dimensions 
+# of the images in the video. Next, the images are created from the PDFs using 
+# the `montage` tool from ImageMagick. In the last part of the script, the movie 
+# is created using `ffmpeg`.
+#
+# Inspired by http://youtu.be/hNENiG7LAnc & https://github.com/adferguson/paper-movies/
+
+# This code is free software: you can redistribute it and/or modify it under
+# the terms of the GNU Lesser General Public License version 2.1 only, as
+# published by the Free Software Foundation.
+#
+# This code is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
+# version 2.1 for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# version 2.1 along with this work. If not, see <http://www.gnu.org/licenses/>.
+
+############################
+###        INPUTS        ###
+############################
+
+# Path to local git repo
+inputPath=~/papermovie/master_thesis/
+
+# Git branch
+branch=master
+
+# Name of the (input) paper file (without extension)
+filename=thesis
+
+# Path to output folder
+outputPath=~/papermovie/output/
+
+# Video size (by default Full HD)
+totalWidth=1920
+totalHeight=1080
+
+# Video frames per second 
+# Use low values (< 5) on papers with many pages (> 50).
+# It will give a better results, since there is much more to look at. ;-)
+fps=2
+
+############################
+### RETRIEVING PDF FILES ###
+############################
+
+cd $inputPath
+
+commitnum=`git rev-list $branch | wc -l`
+last_commit=`git rev-list $branch | head -n 1`
+
+maxPageNum=0
+
+echo -e "Start retrieving PDFs\n"
+for commit in $(git rev-list $branch); do	
+	echo "Retrieving PDF revision $commitnum..."
+    	
+	# Check out old commits
+	git checkout -q -f --detach $commit > /dev/null
+
+	# Compile tex with references
+	pdflatex -synctex=1 -interaction=nonstopmode $filename.tex > /dev/null
+	bibtex $filename.aux > /dev/null
+	pdflatex -synctex=1 -interaction=nonstopmode $filename.tex > /dev/null
+	bibtex $filename.aux > /dev/null
+	pdflatex -synctex=1 -interaction=nonstopmode $filename.tex > /dev/null
+
+	# Find maximum number of pages
+	pages=`pdfinfo $filename.pdf | awk '/^Pages/ { print $2}'`
+	if [ $pages -gt $maxPageNum ]; then
+		maxPageNum=$pages
+	fi
+
+	# Move pdf to output folder
+	formatFilename=`printf "%03d" $commitnum`
+	cp $filename.pdf $outputPath$formatFilename.pdf
+
+	commitnum=$((commitnum-1))
+done
+
+# Revert back to last commit
+git reset --hard $last_commit > /dev/null
+
+############################
+###    CREATING IMAGES   ###
+############################
+
+# The width/height ratio of A4 paper
+ratioA4="0.7070"
+
+# The height of an individual tile
+tileHeight=`echo "scale=10;sqrt(($totalWidth*$totalHeight)/($ratioA4*$maxPageNum))" | bc`
+tileWidth=`echo "scale=10;$tileHeight*$ratioA4" | bc`
+
+# Calculate grid
+numTilesHeight=`echo "scale=10;$totalHeight/$tileHeight" | bc`
+numTilesWidth=`echo "scale=10;$totalWidth/$tileWidth" | bc`
+
+# Ceil tiles to integers,
+numTilesHeight=`awk -v var="$numTilesHeight" 'BEGIN{var = var < 0 ? int(var) : (int(var) + (var == int(var) ? 0 : 1)); print var}'`
+numTilesWidth=`awk -v var="$numTilesWidth" 'BEGIN{var = var < 0 ? int(var) : (int(var) + (var == int(var) ? 0 : 1)); print var}'`
+
+# Report measurements
+echo -e "\nMovie measurements:"
+echo -e "Number of horizontal tiles: $numTilesWidth"
+echo -e "Number of vertical tiles: $numTilesHeight"
+
+# Having ceiled the number of tiles, they exceed the totalWidth and totalHeight.
+# So, we also need to recalculate the tileHeight and tileWidth. This step will
+# (slightly) change the A4 ratio, but it beats half pages in the video. 
+tileHeight=`echo "scale=5;$totalHeight/$numTilesHeight" | bc`
+tileHeight=`echo $tileHeight |cut -f1 -d"."`
+tileWidth=`echo "scale=5;$totalWidth/$numTilesWidth" | bc`
+tileWidth=`echo $tileWidth |cut -f1 -d"."`
+
+cd $outputPath
+
+echo -e "\nStart generating images...\n"
+for f in `ls -1 *.pdf | sed 's/\.[^.]*$//' | sort -n`; do	
+	montage $f.pdf -tile ${numTilesWidth}x${numTilesHeight} -background white -geometry ${tileWidth}x${tileHeight} $f.png
+	echo "Image #$f generated!"
+done
+
+############################
+###     RENDER MOVIE     ###
+############################
+
+echo -e "\nRendering movie...\n"
+ffmpeg -r $fps -i %03d.png -pix_fmt yuv420p -b 8000k -vcodec libx264 $filename.mp4 > /dev/null
+
+############################
+###     CLEANUP STUFF    ###
+############################
+
+echo -e "\nMovie rendered, cleaning up...\n"
+rm *.pdf
+rm *.png
+
+echo -e "Movie available at $outputPath$filename.mp4"

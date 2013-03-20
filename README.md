@@ -36,5 +36,7 @@ Copyright (c) 2013 Raymond Vermaas, licensed under LGPL(2.1). See LICENSE for mo
 Creator
 -------
 Raymond Vermaas
+
 mail: info at momentofgeekiness.com
+
 website: www.momentofgeekiness.com

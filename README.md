@@ -4,7 +4,7 @@ A few months ago, I stumbled upon [a timelapse of a research paper](http://youtu
 At the time I just started writing my master thesis and I decided I would make a timelapse from my thesis as well. 
 Unfortuantely, Weninger did not release his software, so I took matter into my own hands.
 
-This bash script loops through a git repository to creates all the intermediate versions of the paper from the Latex files.
+This bash script loops through a git repository to create all the intermediate versions of the paper from the Latex source files.
 It then calculates the dimensions of the images in the video.
 Next, the images are created from the PDFs using the `montage` tool from ImageMagick.
 In the last part of the script, the movie is created using `ffmpeg`.
@@ -22,6 +22,10 @@ Usage
 2. Modify the input parameters.
 3. Run the script.
 4. Enjoy your movie!
+
+Example
+-------
+My master thesis on "[The Security Risks of Mobile Payment Applications Using Near-Field Communication](http://youtu.be/wprkTENOJHE)".
 
 Thanks to
 ---------
